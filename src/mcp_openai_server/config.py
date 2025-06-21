@@ -12,7 +12,8 @@ class Config(BaseSettings):
     
     # OpenAI API Configuration
     openai_api_key: str = Field(
-        description="OpenAI API key for chat completions"
+        description="OpenAI API key for chat completions",
+        validation_alias="OPENAI_API_KEY"
     )
     openai_base_url: Optional[str] = Field(
         default=None,
