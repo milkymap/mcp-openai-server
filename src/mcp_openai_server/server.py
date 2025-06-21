@@ -16,6 +16,14 @@ from .models import (
     ChatCompletionUsage,
 )
 
+# Reasoning models have specific parameter restrictions
+REASONING_MODELS = {"o1", "o1-mini", "o1-preview", "o1-pro"}
+
+# Parameters not supported by reasoning models
+UNSUPPORTED_REASONING_PARAMS = {
+    "temperature", "top_p", "frequency_penalty", "presence_penalty", "stream"
+}
+
 
 class MCPOpenAIServer:
     """MCP server that provides OpenAI chat completion functionality."""
@@ -41,6 +49,7 @@ class MCPOpenAIServer:
             messages: List[Dict[str, str]],
             model: Optional[str] = None,
             max_tokens: Optional[int] = None,
+            max_completion_tokens: Optional[int] = None,
             temperature: Optional[float] = None,
             top_p: Optional[float] = None,
             frequency_penalty: Optional[float] = None,
@@ -54,14 +63,20 @@ class MCPOpenAIServer:
             a list of messages and optional parameters. It forwards the request
             to OpenAI's API and returns the response in OpenAI-compatible format.
             
+            Supports both traditional models (GPT-3.5, GPT-4) and reasoning models 
+            (o1, o1-mini, o1-preview, o1-pro). Reasoning models have parameter 
+            restrictions - they don't support temperature, top_p, frequency_penalty, 
+            presence_penalty, or streaming.
+            
             Args:
                 messages: List of message dictionaries with 'role' and 'content' keys
                 model: Model to use (defaults to configured default model)
-                max_tokens: Maximum tokens to generate (defaults to configured default)
-                temperature: Sampling temperature 0-2 (defaults to configured default)
-                top_p: Nucleus sampling parameter 0-1
-                frequency_penalty: Frequency penalty -2.0 to 2.0
-                presence_penalty: Presence penalty -2.0 to 2.0
+                max_tokens: Maximum tokens to generate (legacy parameter for non-reasoning models)
+                max_completion_tokens: Maximum completion tokens (required for reasoning models)
+                temperature: Sampling temperature 0-2 (not supported by reasoning models)
+                top_p: Nucleus sampling parameter 0-1 (not supported by reasoning models)
+                frequency_penalty: Frequency penalty -2.0 to 2.0 (not supported by reasoning models)
+                presence_penalty: Presence penalty -2.0 to 2.0 (not supported by reasoning models)
                 stop: List of stop sequences
             
             Returns:
@@ -78,15 +93,44 @@ class MCPOpenAIServer:
                     for msg in messages
                 ]
                 
+                # Determine the model to use
+                target_model = model or self.config.default_model
+                is_reasoning_model = target_model in REASONING_MODELS
+                
+                # Validate parameters for reasoning models
+                if is_reasoning_model:
+                    # Check for unsupported parameters
+                    provided_params = {
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "frequency_penalty": frequency_penalty,
+                        "presence_penalty": presence_penalty,
+                    }
+                    
+                    unsupported_provided = [
+                        param for param, value in provided_params.items()
+                        if value is not None and param in UNSUPPORTED_REASONING_PARAMS
+                    ]
+                    
+                    if unsupported_provided:
+                        return {
+                            "error": {
+                                "type": "validation_error",
+                                "message": f"Parameters {unsupported_provided} are not supported by reasoning model '{target_model}'",
+                                "details": f"Reasoning models only support: messages, model, max_completion_tokens, and stop"
+                            }
+                        }
+                
                 # Create request with defaults from config
                 request = ChatCompletionRequest(
                     messages=chat_messages,
-                    model=model or self.config.default_model,
-                    max_tokens=max_tokens or self.config.default_max_tokens,
-                    temperature=temperature if temperature is not None else self.config.default_temperature,
-                    top_p=top_p,
-                    frequency_penalty=frequency_penalty,
-                    presence_penalty=presence_penalty,
+                    model=target_model,
+                    max_tokens=max_tokens or (self.config.default_max_tokens if not is_reasoning_model else None),
+                    max_completion_tokens=max_completion_tokens,
+                    temperature=temperature if temperature is not None and not is_reasoning_model else (self.config.default_temperature if not is_reasoning_model else None),
+                    top_p=top_p if not is_reasoning_model else None,
+                    frequency_penalty=frequency_penalty if not is_reasoning_model else None,
+                    presence_penalty=presence_penalty if not is_reasoning_model else None,
                     stop=stop,
                     stream=False,  # MCP doesn't support streaming
                 )
@@ -105,17 +149,31 @@ class MCPOpenAIServer:
                 api_params = {
                     "model": request.model,
                     "messages": openai_messages,
-                    "max_tokens": request.max_tokens,
-                    "temperature": request.temperature,
                 }
                 
-                # Add optional parameters if provided
-                if request.top_p is not None:
-                    api_params["top_p"] = request.top_p
-                if request.frequency_penalty is not None:
-                    api_params["frequency_penalty"] = request.frequency_penalty
-                if request.presence_penalty is not None:
-                    api_params["presence_penalty"] = request.presence_penalty
+                # Add token limit parameters based on model type
+                if is_reasoning_model:
+                    # Reasoning models use max_completion_tokens
+                    if request.max_completion_tokens is not None:
+                        api_params["max_completion_tokens"] = request.max_completion_tokens
+                    elif hasattr(self.config, 'default_max_completion_tokens'):
+                        api_params["max_completion_tokens"] = self.config.default_max_completion_tokens
+                else:
+                    # Traditional models use max_tokens and other parameters
+                    if request.max_tokens is not None:
+                        api_params["max_tokens"] = request.max_tokens
+                    if request.temperature is not None:
+                        api_params["temperature"] = request.temperature
+                    
+                    # Add optional parameters if provided (not supported by reasoning models)
+                    if request.top_p is not None:
+                        api_params["top_p"] = request.top_p
+                    if request.frequency_penalty is not None:
+                        api_params["frequency_penalty"] = request.frequency_penalty
+                    if request.presence_penalty is not None:
+                        api_params["presence_penalty"] = request.presence_penalty
+                
+                # Stop sequences are supported by both model types
                 if request.stop is not None:
                     api_params["stop"] = request.stop
                 
@@ -139,6 +197,7 @@ class MCPOpenAIServer:
                     prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
                     completion_tokens=response.usage.completion_tokens if response.usage else 0,
                     total_tokens=response.usage.total_tokens if response.usage else 0,
+                    reasoning_tokens=getattr(response.usage, 'reasoning_tokens', None) if response.usage else None,
                 )
                 
                 completion_response = ChatCompletionResponse(
@@ -214,14 +273,25 @@ class MCPOpenAIServer:
                 "server_name": self.config.server_name,
                 "default_model": self.config.default_model,
                 "default_max_tokens": self.config.default_max_tokens,
+                "default_max_completion_tokens": getattr(self.config, 'default_max_completion_tokens', 32768),
                 "default_temperature": self.config.default_temperature,
                 "capabilities": [
                     "chat_completion",
                     "list_models",
                     "custom_parameters",
                     "multiple_models",
+                    "reasoning_models",
                 ],
                 "supported_roles": ["system", "user", "assistant"],
+                "supported_models": {
+                    "traditional": ["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o", "gpt-4o-mini"],
+                    "reasoning": ["o1", "o1-mini", "o1-preview", "o1-pro"]
+                },
+                "reasoning_model_features": {
+                    "supported_parameters": ["messages", "model", "max_completion_tokens", "stop"],
+                    "unsupported_parameters": ["temperature", "top_p", "frequency_penalty", "presence_penalty", "stream"],
+                    "reasoning_tokens": "included in usage statistics"
+                },
                 "version": "0.1.0",
             }
     

@@ -179,3 +179,65 @@ class TestChatCompletionUsage:
         assert usage.prompt_tokens == 0
         assert usage.completion_tokens == 0
         assert usage.total_tokens == 0
+    
+    def test_reasoning_tokens(self):
+        """Test usage with reasoning tokens."""
+        usage = ChatCompletionUsage(
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            reasoning_tokens=1000,
+        )
+        
+        assert usage.prompt_tokens == 100
+        assert usage.completion_tokens == 50
+        assert usage.total_tokens == 150
+        assert usage.reasoning_tokens == 1000
+    
+    def test_optional_reasoning_tokens(self):
+        """Test usage without reasoning tokens (traditional models)."""
+        usage = ChatCompletionUsage(
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+        )
+        
+        assert usage.prompt_tokens == 100
+        assert usage.completion_tokens == 50
+        assert usage.total_tokens == 150
+        assert usage.reasoning_tokens is None
+
+
+class TestReasoningModelSupport:
+    """Test reasoning model specific functionality."""
+    
+    def test_request_with_max_completion_tokens(self):
+        """Test request with max_completion_tokens for reasoning models."""
+        messages = [ChatMessage(role="user", content="Solve this problem step by step.")]
+        request = ChatCompletionRequest(
+            messages=messages,
+            model="o1-preview",
+            max_completion_tokens=32768,
+        )
+        
+        assert len(request.messages) == 1
+        assert request.model == "o1-preview"
+        assert request.max_completion_tokens == 32768
+        assert request.max_tokens is None
+        assert request.temperature is None
+        assert request.top_p is None
+        assert request.frequency_penalty is None
+        assert request.presence_penalty is None
+    
+    def test_request_with_both_token_limits(self):
+        """Test request with both max_tokens and max_completion_tokens."""
+        messages = [ChatMessage(role="user", content="Hello")]
+        request = ChatCompletionRequest(
+            messages=messages,
+            model="gpt-4",
+            max_tokens=1000,
+            max_completion_tokens=2000,
+        )
+        
+        assert request.max_tokens == 1000
+        assert request.max_completion_tokens == 2000

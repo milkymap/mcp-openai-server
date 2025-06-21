@@ -33,23 +33,27 @@ class ChatCompletionRequest(BaseModel):
     )
     max_tokens: Optional[int] = Field(
         default=None,
-        description="The maximum number of tokens to generate"
+        description="The maximum number of tokens to generate (legacy parameter)"
+    )
+    max_completion_tokens: Optional[int] = Field(
+        default=None,
+        description="The maximum number of completion tokens to generate (for reasoning models)"
     )
     temperature: Optional[float] = Field(
         default=None,
-        description="Sampling temperature between 0 and 2"
+        description="Sampling temperature between 0 and 2 (not supported by reasoning models)"
     )
     top_p: Optional[float] = Field(
         default=None,
-        description="Nucleus sampling parameter"
+        description="Nucleus sampling parameter (not supported by reasoning models)"
     )
     frequency_penalty: Optional[float] = Field(
         default=None,
-        description="Frequency penalty between -2.0 and 2.0"
+        description="Frequency penalty between -2.0 and 2.0 (not supported by reasoning models)"
     )
     presence_penalty: Optional[float] = Field(
         default=None,
-        description="Presence penalty between -2.0 and 2.0"
+        description="Presence penalty between -2.0 and 2.0 (not supported by reasoning models)"
     )
     stop: Optional[Union[str, List[str]]] = Field(
         default=None,
@@ -57,7 +61,7 @@ class ChatCompletionRequest(BaseModel):
     )
     stream: Optional[bool] = Field(
         default=False,
-        description="Whether to stream back partial progress"
+        description="Whether to stream back partial progress (not supported by reasoning models)"
     )
 
 
@@ -86,6 +90,10 @@ class ChatCompletionUsage(BaseModel):
     )
     total_tokens: int = Field(
         description="Total number of tokens used"
+    )
+    reasoning_tokens: Optional[int] = Field(
+        default=None,
+        description="Number of reasoning tokens used (reasoning models only)"
     )
 
 
