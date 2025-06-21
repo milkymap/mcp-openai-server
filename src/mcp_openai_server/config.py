@@ -31,11 +31,15 @@ class Config(BaseSettings):
     )
     default_max_tokens: int = Field(
         default=1000,
-        description="Default maximum tokens for completions"
+        description="Default maximum tokens for completions (traditional models)"
+    )
+    default_max_completion_tokens: int = Field(
+        default=32768,
+        description="Default maximum completion tokens for reasoning models"
     )
     default_temperature: float = Field(
         default=0.7,
-        description="Default temperature for completions"
+        description="Default temperature for completions (traditional models only)"
     )
     
     # Server settings

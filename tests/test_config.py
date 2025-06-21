@@ -20,6 +20,7 @@ class TestConfig:
         assert config.openai_api_key == "test-key"
         assert config.default_model == "gpt-4o-mini"
         assert config.default_max_tokens == 1000
+        assert config.default_max_completion_tokens == 32768
         assert config.default_temperature == 0.7
         assert config.server_name == "MCP OpenAI Server"
         assert config.debug is False
@@ -32,6 +33,7 @@ class TestConfig:
             openai_organization="org-123",
             default_model="gpt-4",
             default_max_tokens=2000,
+            default_max_completion_tokens=16384,
             default_temperature=0.5,
             server_name="Custom Server",
             debug=True,
@@ -42,6 +44,7 @@ class TestConfig:
         assert config.openai_organization == "org-123"
         assert config.default_model == "gpt-4"
         assert config.default_max_tokens == 2000
+        assert config.default_max_completion_tokens == 16384
         assert config.default_temperature == 0.5
         assert config.server_name == "Custom Server"
         assert config.debug is True
